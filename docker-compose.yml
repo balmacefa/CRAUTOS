@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres: 15-alpine
+    container_name: crautos_postgres
+    environment:
+      POSTGRES_USER: crautos_user
+      POSTGRES_PASSWORD: crautos_pass
+      POSTGRES_DB: crautos_db
+    ports: 
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb. d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crautos_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: crautos_redis
+    ports:
+      - "6379:6379"
+    volumes: 
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test:  ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: 
+      context: . 
+      dockerfile: docker/Dockerfile
+    container_name: crautos_backend
+    environment:
+      - DATABASE_URL=postgresql://crautos_user:crautos_pass@postgres:5432/crautos_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition:  service_healthy
+    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data: 
+  redis_data:
