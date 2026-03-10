@@ -5,38 +5,6 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 from bs4 import BeautifulSoup
 
-# We need to monkey patch PostgreSQL UUID before models are imported
-from sqlalchemy.dialects import sqlite
-import sqlalchemy.types as types
-class StringUUID(types.TypeDecorator):
-    impl = types.String
-    cache_ok = True
-    def __init__(self, as_uuid=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "sqlite":
-            return dialect.type_descriptor(types.String(36))
-        else:
-            from sqlalchemy.dialects.postgresql import UUID
-            return dialect.type_descriptor(UUID(as_uuid=True))
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return value
-        elif dialect.name == "sqlite":
-            return str(value)
-        else:
-            return value
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return value
-        if dialect.name == "sqlite":
-            return uuid.UUID(value)
-        else:
-            return value
-
-import sqlalchemy.dialects.postgresql
-sqlalchemy.dialects.postgresql.UUID = StringUUID
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -51,9 +19,6 @@ engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-with engine.begin() as conn:
-    ModelBase.metadata.create_all(conn)
 
 @pytest.fixture
 def db_session():
