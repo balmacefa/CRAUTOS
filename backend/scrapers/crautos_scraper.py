@@ -94,7 +94,7 @@ class CRAutosScraper:
             )
             
             # Parse page content
-            soup = BeautifulSoup(self.driver. page_source, 'html. parser')
+            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
             inventories = soup.find_all('div', class_='inventory')
             
             if not inventories:
@@ -135,7 +135,7 @@ class CRAutosScraper:
                 return None
             
             # Extract car ID from detail link
-            detail_link = inventory_element.find('a', href=re.compile(r'/autosusados/detalles\. cfm'))
+            detail_link = inventory_element.find('a', href=re.compile(r'/autosusados/detalles\.cfm'))
             if detail_link: 
                 href = detail_link.get('href', '')
                 car_data['url_detalle'] = settings.CRAUTOS_BASE_URL + href if href.startswith('/') else href
@@ -213,9 +213,21 @@ class CRAutosScraper:
         """Parse price text to numeric value"""
         try:
             # Remove non-numeric characters except dots and commas
-            cleaned = re. sub(r'[^\d.,]', '', price_text)
-            # Remove commas
-            cleaned = cleaned.replace(',', '')
+            cleaned = re.sub(r'[^\d.,]', '', price_text)
+
+            # Detectar formato europeo: puntos como miles, comas como decimal (ej. 10.000,50)
+            if ',' in cleaned and '.' in cleaned:
+                if cleaned.rfind(',') > cleaned.rfind('.'):
+                    # Es formato europeo: quitar puntos y cambiar coma por punto
+                    cleaned = cleaned.replace('.', '').replace(',', '.')
+                else:
+                    # Formato americano normal: quitar comas
+                    cleaned = cleaned.replace(',', '')
+            elif ',' in cleaned and '.' not in cleaned:
+                # Sólo tiene comas, si tiene tres o menos de distancia del final podría ser centavos, pero usualmente son miles
+                # Asumiremos miles y las quitamos
+                cleaned = cleaned.replace(',', '')
+
             return float(cleaned) if cleaned else None
         except: 
             return None
