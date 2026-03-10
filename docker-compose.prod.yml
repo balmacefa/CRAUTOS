@@ -65,7 +65,7 @@ services:
     expose:
       - "80"
     depends_on:
-      - backend
+      - dashboard
     restart: always
     labels:
       # Ejemplos de labels de Traefik/Coolify si usa la "magic variable"
@@ -83,12 +83,6 @@ services:
       - API_URL=http://backend:8000
     depends_on:
       - backend
-    expose:
-      - "8050"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.crautos_dashboard.rule=Host(`dashboard.${COOLIFY_FQDN}`)"
-      - "traefik.http.services.crautos_dashboard.loadbalancer.server.port=8050"
 
 volumes:
   postgres_data_prod:
