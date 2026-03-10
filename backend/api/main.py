@@ -9,6 +9,8 @@ from backend.models.schemas import (
 from backend.analyzers. report_generator import ReportGenerator
 from backend.scrapers.crautos_scraper import CRAutosScraper
 from backend.models.schemas import CarCreate
+from backend.models.ml_schemas import PricePredictionRequest, PricePredictionResponse
+from backend.analyzers.price_predictor import price_predictor
 from backend.config. settings import settings
 from backend.utils.logger import logger
 from typing import List
@@ -226,6 +228,32 @@ async def get_scraper_status(db: Session = Depends(get_db)):
         logger. error(f"Error getting scraper status: {e}")
         raise HTTPException(status_code=500, detail="Error retrieving status")
 
+
+@app.post("/api/cars/predict_price", response_model=PricePredictionResponse)
+async def predict_car_price(request: PricePredictionRequest):
+    """Predict estimated car price based on attributes using Machine Learning"""
+    try:
+        estimated_price = price_predictor.predict_price(
+            marca=request.marca,
+            modelo=request.modelo,
+            año=request.año,
+            kilometraje=request.kilometraje,
+            cilindrada=request.cilindrada,
+            combustible=request.combustible,
+            transmision=request.transmision,
+            cantidad_extras=request.cantidad_extras
+        )
+        return PricePredictionResponse(
+            precio_estimado_crc=estimated_price,
+            marca=request.marca,
+            modelo=request.modelo,
+            año=request.año
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Prediction failed: {e}")
+        raise HTTPException(status_code=500, detail="Prediction failed")
 
 if __name__ == "__main__": 
     import uvicorn
