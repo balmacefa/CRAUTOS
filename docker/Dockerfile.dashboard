@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instalar dependencias del sistema requeridas para compilar psycopg2 y otras librerías
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar requirements
+COPY requirements.txt .
+
+# Instalar dependencias
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar el código del dashboard
+COPY dashboard/ /app/dashboard/
+
+# Exponer el puerto
+EXPOSE 8050
+
+# Comando para ejecutar el dashboard usando gunicorn o directamente con python
+# Para entorno de producción lo ideal sería Gunicorn, pero usamos el servidor de desarrollo de Dash de momento
+# O podemos usar gunicorn ya que es production ready
+RUN pip install gunicorn
+CMD ["gunicorn", "-b", "0.0.0.0:8050", "dashboard.app:server"]

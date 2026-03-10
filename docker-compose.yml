@@ -55,6 +55,20 @@ services:
         condition:  service_healthy
     command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
 
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: crautos_dashboard
+    environment:
+      - DATABASE_URL=postgresql://crautos_user:crautos_pass@postgres:5432/crautos_db
+    ports:
+      - "8050:8050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: gunicorn -b 0.0.0.0:8050 --timeout 120 dashboard.app:server
+
 volumes:
   postgres_data: 
   redis_data:

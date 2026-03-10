@@ -57,6 +57,22 @@ services:
       redis:
         condition: service_healthy
 
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: crautos_dashboard_dev
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-crautos_user}:${DB_PASSWORD:-crautos_pass}@postgres:5432/${DB_NAME:-crautos_db}
+    ports:
+      - "8050:8050"
+    volumes:
+      - ./dashboard:/app/dashboard
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: gunicorn -b 0.0.0.0:8050 --reload dashboard.app:server
+
 volumes:
   postgres_data_dev:
   redis_data_dev:

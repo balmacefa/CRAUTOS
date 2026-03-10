@@ -73,6 +73,23 @@ services:
       - "traefik.http.routers.crautos.rule=Host(`${COOLIFY_FQDN}`)"
       - "traefik.http.services.crautos.loadbalancer.server.port=80"
 
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: crautos_dashboard_prod
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-crautos_user}:${DB_PASSWORD:-crautos_pass}@postgres:5432/${DB_NAME:-crautos_db}
+    # No exponemos los puertos al host directamente por proxy, pero Coolify lo maneja si es necesario.
+    # Exponemos 8050 o dejamos que traefik lo intercepte con labels.
+    expose:
+      - "8050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    command: gunicorn -b 0.0.0.0:8050 --workers 2 --threads 4 --timeout 120 dashboard.app:server
+
 volumes:
   postgres_data_prod:
   redis_data_prod:
