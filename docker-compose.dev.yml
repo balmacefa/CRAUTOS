@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: crautos_postgres_dev
+    environment:
+      POSTGRES_USER: ${DB_USER:-crautos_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-crautos_pass}
+      POSTGRES_DB: ${DB_NAME:-crautos_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-crautos_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: crautos_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: crautos_backend_dev
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-crautos_user}:${DB_PASSWORD:-crautos_pass}@postgres:5432/${DB_NAME:-crautos_db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_RELOAD=True
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./scripts:/app/scripts
+      - ./logs:/app/logs
+      - ./reports:/app/reports
+      # El script de setup o el entrypoint se encarga del entorno. No mapeamos .env como volumen por precaución
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data_dev:
+  redis_data_dev:
