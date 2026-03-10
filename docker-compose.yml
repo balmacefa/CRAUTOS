@@ -42,8 +42,6 @@ services:
       - DATABASE_URL=postgresql://crautos_user:crautos_pass@postgres:5432/crautos_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-    ports:
-      - "8000:8000"
     volumes:
       - ./backend:/app/backend
       - ./logs:/app/logs
@@ -56,6 +54,17 @@ services:
         condition:  service_healthy
     command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
 
+  proxy:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.haproxy
+    container_name: crautos_proxy
+    ports:
+      - "80:80"
+    depends_on:
+      - dashboard
+    restart: always
+
   dashboard:
     build:
       context: .
@@ -66,8 +75,6 @@ services:
       - API_URL=http://backend:8000
     depends_on:
       - backend
-    ports:
-      - "8050:8050"
 
 volumes:
   postgres_data: 

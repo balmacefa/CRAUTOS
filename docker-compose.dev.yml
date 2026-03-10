@@ -43,8 +43,6 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - API_RELOAD=True
-    ports:
-      - "8000:8000"
     volumes:
       - ./backend:/app/backend
       - ./scripts:/app/scripts
@@ -58,6 +56,17 @@ services:
       redis:
         condition: service_healthy
 
+  proxy:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.haproxy
+    container_name: crautos_proxy_dev
+    ports:
+      - "80:80"
+    depends_on:
+      - dashboard
+    restart: always
+
   dashboard:
     build:
       context: .
@@ -68,8 +77,6 @@ services:
       - API_URL=http://backend:8000
     depends_on:
       - backend
-    ports:
-      - "8050:8050"
     volumes:
       - ./dashboard:/app/dashboard
 
