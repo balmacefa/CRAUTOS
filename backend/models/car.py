@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Decimal, Boolean, DateTime, Text, Date
+from sqlalchemy import Column, String, Integer, Numeric, Boolean, DateTime, Text, Date
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
@@ -17,7 +17,7 @@ class Car(Base):
     modelo = Column(String(200))
     año = Column(String(10), index=True)
     precio = Column(String(50))
-    precio_numerico = Column(Decimal(15, 2), index=True)
+    precio_numerico = Column(Numeric(15, 2), index=True)
     transmision = Column(String(50))
     combustible = Column(String(50))
     kilometraje = Column(String(50))
