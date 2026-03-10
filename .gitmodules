@@ -1,0 +1,3 @@
+[submodule "crautos_analisis_datos"]
+	path = crautos_analisis_datos
+	url = https://github.com/balmacefa/crautos_analisis_datos

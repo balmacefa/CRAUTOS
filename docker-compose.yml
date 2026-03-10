@@ -48,12 +48,26 @@ services:
       - ./backend:/app/backend
       - ./logs:/app/logs
       - ./reports:/app/reports
+      - ./crautos_analisis_datos:/app/crautos_analisis_datos
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition:  service_healthy
     command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: crautos_dashboard
+    restart: always
+    environment:
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "8050:8050"
 
 volumes:
   postgres_data: 

@@ -73,6 +73,23 @@ services:
       - "traefik.http.routers.crautos.rule=Host(`${COOLIFY_FQDN}`)"
       - "traefik.http.services.crautos.loadbalancer.server.port=80"
 
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: crautos_dashboard_prod
+    restart: always
+    environment:
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+    expose:
+      - "8050"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.crautos_dashboard.rule=Host(`dashboard.${COOLIFY_FQDN}`)"
+      - "traefik.http.services.crautos_dashboard.loadbalancer.server.port=8050"
+
 volumes:
   postgres_data_prod:
   redis_data_prod:

@@ -50,12 +50,28 @@ services:
       - ./scripts:/app/scripts
       - ./logs:/app/logs
       - ./reports:/app/reports
+      - ./crautos_analisis_datos:/app/crautos_analisis_datos
       # El script de setup o el entrypoint se encarga del entorno. No mapeamos .env como volumen por precaución
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: crautos_dashboard_dev
+    restart: always
+    environment:
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "8050:8050"
+    volumes:
+      - ./dashboard:/app/dashboard
 
 volumes:
   postgres_data_dev:
