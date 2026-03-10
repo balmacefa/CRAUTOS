@@ -1,0 +1,30 @@
+FROM python:3.11-slim
+
+# Evitar escritura de .pyc en disco y deshabilitar buffer de stdin/out
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Configuración de entorno en producción base (sobreescribible)
+ENV API_RELOAD=False
+ENV LOG_LEVEL=INFO
+ENV API_WORKERS=4
+
+# Instalar dependencias del sistema y chromium
+RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-driver \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copiar requirements.txt e instalar
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar todo el código fuente al contenedor
+COPY . /app/
+
+# Entrypoint y comando
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

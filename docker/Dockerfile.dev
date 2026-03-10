@@ -1,0 +1,30 @@
+FROM python:3.11-slim
+
+# Evitar escritura de .pyc en disco y deshabilitar buffer de stdin/out
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Configuración de entorno local base
+ENV API_RELOAD=True
+ENV LOG_LEVEL=DEBUG
+
+# Instalar dependencias del sistema y chromium
+RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-driver \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copiar requirements.txt e instalar
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar entrypoint.sh y darle permisos
+COPY docker/entrypoint.sh /app/docker/entrypoint.sh
+RUN chmod +x /app/docker/entrypoint.sh
+
+# Entrypoint y comando (con autoreload)
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

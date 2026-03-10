@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: crautos_postgres_prod
+    environment:
+      POSTGRES_USER: ${DB_USER:-crautos_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-crautos_pass}
+      POSTGRES_DB: ${DB_NAME:-crautos_db}
+    # No exponemos los puertos de la BD por seguridad en producción
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-crautos_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: crautos_redis_prod
+    # No exponemos los puertos de redis por seguridad en producción
+    volumes:
+      - redis_data_prod:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    container_name: crautos_backend_prod
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-crautos_user}:${DB_PASSWORD:-crautos_pass}@postgres:5432/${DB_NAME:-crautos_db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_RELOAD=False
+    # El backend no expone puertos externos porque el proxy se encarga de eso
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    # Coolify usa variables mágicas, aquí le decimos a Coolify que enrute a este puerto si es necesario
+    # Opcional dependiendo de si el proxy interno lo usa
+    labels:
+      - "coolify.managed=true"
+
+  proxy:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.haproxy
+    container_name: crautos_proxy_prod
+    # Quitamos la exposición explícita del puerto 80 al host para no causar conflictos con el traefik/caddy de Coolify.
+    # El proxy interno (traefik/caddy) de Coolify mapeará el tráfico al puerto 80 expuesto internamente.
+    expose:
+      - "80"
+    depends_on:
+      - backend
+    restart: always
+    labels:
+      # Ejemplos de labels de Traefik/Coolify si usa la "magic variable"
+      - "traefik.enable=true"
+      - "traefik.http.routers.crautos.rule=Host(`${COOLIFY_FQDN}`)"
+      - "traefik.http.services.crautos.loadbalancer.server.port=80"
+
+volumes:
+  postgres_data_prod:
+  redis_data_prod:

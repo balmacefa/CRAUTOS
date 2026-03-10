@@ -90,12 +90,13 @@ class CRAutosScraper:
             
             # Wait for page to load
             WebDriverWait(self.driver, settings.SCRAPER_TIMEOUT).until(
-                EC.presence_of_element_located((By. CLASS_NAME, "inventory"))
+                EC.presence_of_element_located((By.CLASS_NAME, "inventory-main-yellow"))
             )
             
             # Parse page content
-            soup = BeautifulSoup(self.driver. page_source, 'html. parser')
-            inventories = soup.find_all('div', class_='inventory')
+            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+            # Las publicaciones suelen usar inventory-main-yellow o inventory-main-blue
+            inventories = soup.find_all('div', class_=re.compile(r'inventory-main-.*'))
             
             if not inventories:
                 return []
@@ -122,55 +123,62 @@ class CRAutosScraper:
                 'fecha_extraccion': datetime.now().isoformat()
             }
             
-            # Extract title
-            title_elem = inventory_element.find('div', class_='title')
-            if title_elem:
-                title_text = title_elem.get_text(strip=True)
-                car_data['titulo_completo'] = title_text
-                
-                # Parse title to extract marca, modelo, año
-                parsed = self._parse_title(title_text)
-                car_data. update(parsed)
-            else:
-                return None
-            
-            # Extract car ID from detail link
-            detail_link = inventory_element.find('a', href=re.compile(r'/autosusados/detalles\. cfm'))
+            # Extract details link and ID
+            detail_link = inventory_element.find('a', href=re.compile(r'/autosusados/cardetail\.cfm|/autosusados/detalles\.cfm'))
             if detail_link: 
                 href = detail_link.get('href', '')
                 car_data['url_detalle'] = settings.CRAUTOS_BASE_URL + href if href.startswith('/') else href
                 
-                # Extract car_id from URL
-                match = re.search(r'id=(\d+)', href)
+                # Extract car_id from URL (c= or id=)
+                match = re.search(r'[?&](c|id)=(\d+)', href)
                 if match:
-                    car_data['car_id'] = match.group(1)
-            
+                    car_data['car_id'] = match.group(2)
+            else:
+                return None
+
+            # Extract brand from brandtitle
+            brand_elem = inventory_element.find('span', class_='brandtitle') or inventory_element.find('span', class_='brandtitle2')
+            if brand_elem:
+                car_data['marca'] = brand_elem.get_text(strip=True)
+
+            # Extract model and year from modeltitle
+            model_elem = inventory_element.find('td', class_='modeltitle')
+            if model_elem:
+                # modeltitle is usually "MODEL - <b>YEAR</b>"
+                full_text = model_elem.get_text(strip=True)
+                year_elem = model_elem.find('b')
+                year_text = year_elem.get_text(strip=True) if year_elem else ""
+
+                car_data['año'] = year_text
+
+                # Extract model (everything before the year, removing hyphens)
+                model_text = full_text.replace(year_text, '').replace('-', '').strip()
+                car_data['modelo'] = model_text
+
+                # Build full title
+                brand = car_data.get('marca', '')
+                car_data['titulo_completo'] = f"{brand} {model_text} {year_text}".strip()
+
+            # Extract transmision
+            trans_elem = inventory_element.find('div', class_='transtitle')
+            if trans_elem:
+                car_data['transmision'] = trans_elem.get_text(strip=True).split('-')[0].strip()
+
             # Extract price
-            price_elem = inventory_element.find('div', class_='price')
+            price_elem = inventory_element.find(class_=re.compile(r'precio.*'))
             if price_elem:
                 price_text = price_elem.get_text(strip=True)
                 car_data['precio'] = price_text
                 car_data['precio_numerico'] = self._parse_price(price_text)
             
-            # Extract image
-            img_elem = inventory_element.find('img', class_='preview')
-            if img_elem: 
-                car_data['url_imagen'] = img_elem. get('src', '')
-            
-            # Extract attributes (transmision, combustible, etc.)
-            options_table = inventory_element.find('table', class_='options-primary')
-            if options_table: 
-                attributes = self._extract_attributes(options_table)
-                car_data.update(attributes)
-            
-            # Extract seller info
-            seller_elem = inventory_element.find('div', class_='seller-name')
-            if seller_elem: 
-                car_data['vendedor'] = seller_elem.get_text(strip=True)
-            
-            phone_elem = inventory_element.find('div', class_='phone')
-            if phone_elem: 
-                car_data['telefono'] = phone_elem.get_text(strip=True)
+            # Extract image (CRAutos uses an object tag or img sometimes)
+            obj_elem = inventory_element.find('object', data=True)
+            if obj_elem:
+                car_data['url_imagen'] = obj_elem.get('data', '')
+            else:
+                img_elem = inventory_element.find('img')
+                if img_elem:
+                    car_data['url_imagen'] = img_elem.get('src', '')
             
             return car_data
             
@@ -213,9 +221,21 @@ class CRAutosScraper:
         """Parse price text to numeric value"""
         try:
             # Remove non-numeric characters except dots and commas
-            cleaned = re. sub(r'[^\d.,]', '', price_text)
-            # Remove commas
-            cleaned = cleaned.replace(',', '')
+            cleaned = re.sub(r'[^\d.,]', '', price_text)
+
+            # Detectar formato europeo: puntos como miles, comas como decimal (ej. 10.000,50)
+            if ',' in cleaned and '.' in cleaned:
+                if cleaned.rfind(',') > cleaned.rfind('.'):
+                    # Es formato europeo: quitar puntos y cambiar coma por punto
+                    cleaned = cleaned.replace('.', '').replace(',', '.')
+                else:
+                    # Formato americano normal: quitar comas
+                    cleaned = cleaned.replace(',', '')
+            elif ',' in cleaned and '.' not in cleaned:
+                # Sólo tiene comas, si tiene tres o menos de distancia del final podría ser centavos, pero usualmente son miles
+                # Asumiremos miles y las quitamos
+                cleaned = cleaned.replace(',', '')
+
             return float(cleaned) if cleaned else None
         except: 
             return None

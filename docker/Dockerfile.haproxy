@@ -1,0 +1,8 @@
+FROM haproxy:2.8-alpine
+
+# Habilitar HAProxy dataplane o configuraciones básicas si se requieren
+ENV HAPROXY_USER=admin
+ENV HAPROXY_PASSWORD=admin
+
+# Copiar el archivo de configuración custom
+COPY docker/haproxy.cfg /usr/local/etc/haproxy/haproxy.cfg
