@@ -43,9 +43,12 @@ def mock_html_content():
     return """
     <html>
         <body>
+
         </body>
     </html>
     """
+
+
 
 def test_scrape_all_cars_live():
     # Execute the scraper against the live website for 1 page only to ensure real integration works

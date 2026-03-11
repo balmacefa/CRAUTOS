@@ -73,7 +73,7 @@ class CRAutosScraper:
 
         try:
             await page.goto(self.base_url, wait_until="domcontentloaded", timeout=60000)
-            
+
             # Click search to list all cars
             try:
                 await page.locator(".btn.btn-lg.btn-success").click(timeout=10000)
@@ -92,7 +92,7 @@ class CRAutosScraper:
                             last_page_number = int(match.group(1))
             except Exception as e:
                 logger.error(f"Error finding last page: {e}")
-            
+
             # Use self.max_pages if set to limit
             pages_to_scrape = min(last_page_number, self.max_pages)
             logger.info(f"Will scrape {pages_to_scrape} pages (out of {last_page_number} total).")

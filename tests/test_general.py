@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 import sys
 import os
 
+
 from backend.api.main import app
 from backend.database.connection import Base, get_db
 from backend.models.car import Car, Report, ScrapingLog, Base as ModelBase

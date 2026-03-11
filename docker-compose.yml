@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres: 15-alpine
+    image: postgres:15-alpine
     container_name: crautos_postgres
     environment:
       POSTGRES_USER: crautos_user
@@ -42,6 +42,9 @@ services:
       - DATABASE_URL=postgresql://crautos_user:crautos_pass@postgres:5432/crautos_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+    ports:
+      - "8000:8000"
+
     volumes:
       - ./backend:/app/backend
       - ./logs:/app/logs

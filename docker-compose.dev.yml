@@ -43,6 +43,9 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - API_RELOAD=True
+    ports:
+      - "8000:8000"
+
     volumes:
       - ./backend:/app/backend
       - ./scripts:/app/scripts
