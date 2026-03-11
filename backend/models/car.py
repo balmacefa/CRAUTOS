@@ -2,15 +2,49 @@ from sqlalchemy import Column, String, Integer, Numeric, Boolean, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
+import sqlalchemy.types as types
 import uuid
 
 Base = declarative_base()
+
+class GUID(types.TypeDecorator):
+    """Platform-independent GUID type.
+    Uses PostgreSQL's UUID type, otherwise uses
+    CHAR(32), storing as stringified hex values.
+    """
+    impl = types.String
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(UUID(as_uuid=True))
+        else:
+            return dialect.type_descriptor(types.String(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return str(value)
+        else:
+            if not isinstance(value, uuid.UUID):
+                return "%.32s" % uuid.UUID(value).hex
+            else:
+                return "%.32s" % value.hex
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                value = uuid.UUID(value)
+            return value
 
 
 class Car(Base):
     __tablename__ = "cars"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     car_id = Column(String(100), unique=True, index=True)
     titulo_completo = Column(Text, nullable=False)
     marca = Column(String(100), index=True)
@@ -46,7 +80,7 @@ class Car(Base):
 class Report(Base):
     __tablename__ = "reports"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     report_type = Column(String(50), nullable=False, index=True)
     report_data = Column(Text, nullable=False)  # JSON string
     total_cars = Column(Integer)
@@ -61,7 +95,7 @@ class Report(Base):
 class ScrapingLog(Base):
     __tablename__ = "scraping_logs"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     status = Column(String(20), nullable=False, index=True)
     cars_scraped = Column(Integer, default=0)
     pages_processed = Column(Integer, default=0)
