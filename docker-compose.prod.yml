@@ -50,45 +50,31 @@ services:
       redis:
         condition: service_healthy
     restart: always
-    # Coolify usa variables mágicas, aquí le decimos a Coolify que enrute a este puerto si es necesario
-    # Opcional dependiendo de si el proxy interno lo usa
-    labels:
-      - "coolify.managed=true"
+
 
   proxy:
     build:
       context: .
       dockerfile: docker/Dockerfile.haproxy
     container_name: crautos_proxy_prod
-    # Quitamos la exposición explícita del puerto 80 al host para no causar conflictos con el traefik/caddy de Coolify.
-    # El proxy interno (traefik/caddy) de Coolify mapeará el tráfico al puerto 80 expuesto internamente.
     expose:
       - "80"
     depends_on:
-      - backend
+      - dashboard
     restart: always
-    labels:
-      # Ejemplos de labels de Traefik/Coolify si usa la "magic variable"
-      - "traefik.enable=true"
-      - "traefik.http.routers.crautos.rule=Host(`${COOLIFY_FQDN}`)"
-      - "traefik.http.services.crautos.loadbalancer.server.port=80"
+    environment:
+      - SERVICE_URL_PROXY_80=/
 
   dashboard:
     build:
       context: .
-      dockerfile: docker/Dockerfile.dashboard
+      dockerfile: dashboard/Dockerfile
     container_name: crautos_dashboard_prod
-    environment:
-      - DATABASE_URL=postgresql://${DB_USER:-crautos_user}:${DB_PASSWORD:-crautos_pass}@postgres:5432/${DB_NAME:-crautos_db}
-    # No exponemos los puertos al host directamente por proxy, pero Coolify lo maneja si es necesario.
-    # Exponemos 8050 o dejamos que traefik lo intercepte con labels.
-    expose:
-      - "8050"
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: always
-    command: gunicorn -b 0.0.0.0:8050 --workers 2 --threads 4 --timeout 120 dashboard.app:server
+    environment:
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
 
 volumes:
   postgres_data_prod:

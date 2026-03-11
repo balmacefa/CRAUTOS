@@ -1,307 +1,266 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium. webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from bs4 import BeautifulSoup
+import asyncio
+import json
+import re
+import os
+import time
+import logging
+import random
+from urllib.parse import urljoin, urlparse, parse_qs
+from datetime import datetime
+from typing import List, Dict, Optional
+
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from backend.config.settings import settings
 from backend.utils.logger import logger
-from typing import List, Dict, Optional
-import time
-import re
-from datetime import datetime
 
+# Import MARCAS from external repo code if needed or define a basic one
+MARCAS = [
+    "ACURA", "ALFA ROMEO", "AMC", "ARO", "ASIA", "ASTON MARTIN", "AUDI", "AUSTIN", "BAW", "BENTLEY", "BLUEBIRD", "BMW", "BRILLIANCE", "BUICK", "BYD", "CADILLAC", "CHANA", "CHANGAN", "CHERY", "CHEVROLET", "CHRYSLER", "CITROEN", "DACIA", "DAEWOO", "DAIHATSU", "DATSUN", "DODGE/RAM", "DODGE", "RAM", "DONFENG(ZNA)", "DONFENG", "ZNA", "EAGLE", "FAW", "FERRARI", "FIAT", "FORD", "FOTON", "FREIGHTLINER", "GEELY", "GENESIS", "GEO", "GMC", "GONOW", "GREAT WALL", "HAFEI", "HAIMA", "HEIBAO", "HIGER", "HINO", "HONDA", "HUMMER", "HYUNDAI", "INFINITI", "INTERNATIONAL", "ISUZU", "IVECO", "JAC", "JAGUAR", "JEEP", "JINBEI", "JMC", "JONWAY", "KENWORTH", "KIA", "LADA", "LAMBORGHINI", "LANCIA", "LAND ROVER", "LEXUS", "LIFAN", "LINCOLN", "LOTUS", "MACK", "MAHINDRA", "MASERATI", "MAZDA", "MCLAREN", "MERCEDES BENZ", "MERCURY", "MG", "MINI", "MITSUBISHI", "MORGAN", "NISSAN", "OLDSMOBILE", "OPEL", "PETERBILT", "PEUGEOT", "PLYMOUTH", "POLARIS", "PONTIAC", "PORSCHE", "PROTON", "PUMA", "RAM", "RENAULT", "ROVER", "SAAB", "SAMSUNG", "SATURN", "SCION", "SEAT", "SKODA", "SMART", "SOUEAST", "SSANG YONG", "SUBARU", "SUZUKI", "TATA", "TIANMA", "TOYOTA", "TRIUMPH", "UAZ", "VOLKSWAGEN", "VOLVO", "WESTERN STAR", "WILLYS", "YUEJIN", "YUGO", "ZNA", "ZOTYE", "ZX AUTO"
+]
 
 class CRAutosScraper:
-    
     def __init__(self, headless: bool = None, max_pages: int = None):
-        self.headless = headless if headless is not None else settings. SCRAPER_HEADLESS
+        self.headless = headless if headless is not None else settings.SCRAPER_HEADLESS
+        # Force max_pages for tests if passed
         self.max_pages = max_pages if max_pages is not None else settings.SCRAPER_MAX_PAGES
         self.base_url = settings.CRAUTOS_USED_CARS_URL
         self.cars_data = []
-        self. driver = None
-        
-    def setup_driver(self):
-        """Setup Chrome driver with options"""
-        chrome_options = Options()
-        
-        if self.headless:
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-        
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--window-size=1920,1080')
-        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-        
-        try:
-            self.driver = webdriver.Chrome(options=chrome_options)
-            logger.info("Chrome driver initialized successfully")
-        except Exception as e:
-            logger. error(f"Error initializing Chrome driver: {e}")
-            raise
-    
-    def close_driver(self):
-        """Close the Chrome driver"""
-        if self.driver:
-            self.driver.quit()
-            logger.info("Chrome driver closed")
-    
+
     def scrape_all_cars(self) -> List[Dict]:
-        """Scrape all cars from CRAutos"""
-        self.setup_driver()
-        
+        """Synchronous wrapper to scrape all cars to maintain compatibility with existing codebase"""
         try:
-            logger.info("Starting scraping process...")
-            page_num = 1
-            
-            while page_num <= self.max_pages:
-                logger.info(f"Scraping page {page_num}/{self.max_pages}")
-                
-                cars = self._scrape_page(page_num)
-                
-                if not cars:
-                    logger.info(f"No more cars found on page {page_num}. Stopping.")
-                    break
-                
-                self.cars_data.extend(cars)
-                logger.info(f"Found {len(cars)} cars on page {page_num}. Total: {len(self.cars_data)}")
-                
-                # Delay between requests
-                time.sleep(settings. SCRAPER_DELAY_SECONDS)
-                page_num += 1
-            
-            logger.info(f"Scraping completed. Total cars: {len(self.cars_data)}")
-            return self.cars_data
-            
-        except Exception as e:
-            logger.error(f"Error during scraping:  {e}")
-            raise
-        finally:
-            self.close_driver()
-    
-    def _scrape_page(self, page_num: int) -> List[Dict]:
-        """Scrape a single page"""
-        try:
-            url = f"{self.base_url}?p={page_num}"
-            self.driver.get(url)
-            
-            # Wait for page to load
-            WebDriverWait(self.driver, settings.SCRAPER_TIMEOUT).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "inventory-main-yellow"))
+            return asyncio.run(self._async_scrape_all_cars())
+        except RuntimeError:
+            # If an event loop is already running (e.g., inside FastAPI task)
+            import nest_asyncio
+            nest_asyncio.apply()
+            return asyncio.run(self._async_scrape_all_cars())
+
+    async def _async_scrape_all_cars(self) -> List[Dict]:
+        logger.info("Starting asynchronous scraping with Playwright...")
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=self.headless)
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
             )
+            page = await context.new_page()
             
-            # Parse page content
-            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
-            # Las publicaciones suelen usar inventory-main-yellow o inventory-main-blue
-            inventories = soup.find_all('div', class_=re.compile(r'inventory-main-.*'))
+            # Step 1: Get URLs
+            car_urls = await self._get_car_urls(page)
+            logger.info(f"Found {len(car_urls)} car URLs to scrape.")
             
-            if not inventories:
-                return []
+            # Step 2: Scrape details
+            # We will process them sequentially or with bounded concurrency to not overwhelm
+            semaphore = asyncio.Semaphore(10) # 10 concurrent requests
             
-            cars = []
-            for inv in inventories:
-                car_data = self._extract_car_data(inv)
-                if car_data:
-                    cars.append(car_data)
+            tasks = [self._scrape_car_details_task(url, context, semaphore) for url in car_urls]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            return cars
+            for res in results:
+                if isinstance(res, dict) and res:
+                    self.cars_data.append(res)
+                elif isinstance(res, Exception):
+                    logger.error(f"Error scraping a URL: {res}")
+
+            await browser.close()
             
-        except TimeoutException: 
-            logger.warning(f"Timeout loading page {page_num}")
-            return []
-        except Exception as e:
-            logger.error(f"Error scraping page {page_num}: {e}")
-            return []
-    
-    def _extract_car_data(self, inventory_element) -> Optional[Dict]:
-        """Extract data from a single car listing"""
+        logger.info(f"Scraping completed. Total cars: {len(self.cars_data)}")
+        return self.cars_data
+
+    async def _get_car_urls(self, page) -> List[str]:
+        detail_urls = set()
+
         try:
-            car_data = {
-                'fecha_extraccion': datetime.now().isoformat()
-            }
+            await page.goto(self.base_url, wait_until="domcontentloaded", timeout=60000)
+
+            # Click search to list all cars
+            try:
+                await page.locator(".btn.btn-lg.btn-success").click(timeout=10000)
+            except Exception:
+                logger.warning("Could not find or click the search button, continuing anyway...")
+
+            # Determine total pages
+            last_page_number = 1
+            try:
+                last_page_link = page.locator('a:has-text("Última Página")')
+                if await last_page_link.count() > 0:
+                    href = await last_page_link.first.get_attribute("href", timeout=5000)
+                    if href:
+                        match = re.search(r"p\('(\d+)'\)", href)
+                        if match:
+                            last_page_number = int(match.group(1))
+            except Exception as e:
+                logger.error(f"Error finding last page: {e}")
+
+            # Use self.max_pages if set to limit
+            pages_to_scrape = min(last_page_number, self.max_pages)
+            logger.info(f"Will scrape {pages_to_scrape} pages (out of {last_page_number} total).")
             
-            # Extract details link and ID
-            detail_link = inventory_element.find('a', href=re.compile(r'/autosusados/cardetail\.cfm|/autosusados/detalles\.cfm'))
-            if detail_link: 
-                href = detail_link.get('href', '')
-                car_data['url_detalle'] = settings.CRAUTOS_BASE_URL + href if href.startswith('/') else href
-                
-                # Extract car_id from URL (c= or id=)
-                match = re.search(r'[?&](c|id)=(\d+)', href)
-                if match:
-                    car_data['car_id'] = match.group(2)
-            else:
-                return None
+            for page_num in range(1, pages_to_scrape + 1):
+                logger.info(f"Extracting URLs from page {page_num}/{pages_to_scrape}...")
 
-            # Extract brand from brandtitle
-            brand_elem = inventory_element.find('span', class_='brandtitle') or inventory_element.find('span', class_='brandtitle2')
-            if brand_elem:
-                car_data['marca'] = brand_elem.get_text(strip=True)
+                if page_num > 1:
+                    try:
+                        async with page.expect_navigation(wait_until="domcontentloaded", timeout=30000):
+                            await page.evaluate(f"p('{page_num}')")
+                    except Exception as e:
+                        logger.error(f"Failed to navigate to page {page_num}: {e}")
+                        continue
 
-            # Extract model and year from modeltitle
-            model_elem = inventory_element.find('td', class_='modeltitle')
-            if model_elem:
-                # modeltitle is usually "MODEL - <b>YEAR</b>"
-                full_text = model_elem.get_text(strip=True)
-                year_elem = model_elem.find('b')
-                year_text = year_elem.get_text(strip=True) if year_elem else ""
+                try:
+                    await page.wait_for_selector('a[href^="cardetail.cfm"]', timeout=10000)
+                    links = await page.locator('a[href^="cardetail.cfm"]').all()
 
-                car_data['año'] = year_text
+                    for link in links:
+                        href = await link.get_attribute("href")
+                        if href:
+                            absolute_url = urljoin(page.url, href)
+                            detail_urls.add(absolute_url)
+                except Exception as e:
+                    logger.warning(f"No detail links found on page {page_num}: {e}")
 
-                # Extract model (everything before the year, removing hyphens)
-                model_text = full_text.replace(year_text, '').replace('-', '').strip()
-                car_data['modelo'] = model_text
-
-                # Build full title
-                brand = car_data.get('marca', '')
-                car_data['titulo_completo'] = f"{brand} {model_text} {year_text}".strip()
-
-            # Extract transmision
-            trans_elem = inventory_element.find('div', class_='transtitle')
-            if trans_elem:
-                car_data['transmision'] = trans_elem.get_text(strip=True).split('-')[0].strip()
-
-            # Extract price
-            price_elem = inventory_element.find(class_=re.compile(r'precio.*'))
-            if price_elem:
-                price_text = price_elem.get_text(strip=True)
-                car_data['precio'] = price_text
-                car_data['precio_numerico'] = self._parse_price(price_text)
-            
-            # Extract image (CRAutos uses an object tag or img sometimes)
-            obj_elem = inventory_element.find('object', data=True)
-            if obj_elem:
-                car_data['url_imagen'] = obj_elem.get('data', '')
-            else:
-                img_elem = inventory_element.find('img')
-                if img_elem:
-                    car_data['url_imagen'] = img_elem.get('src', '')
-            
-            return car_data
-            
         except Exception as e:
-            logger.error(f"Error extracting car data: {e}")
+            logger.error(f"Error getting car URLs: {e}")
+
+        return list(detail_urls)
+
+    async def _scrape_car_details_task(self, url: str, context, semaphore: asyncio.Semaphore) -> Optional[Dict]:
+        async with semaphore:
+            page = None
+            for attempt in range(3): # TRIES
+                try:
+                    page = await context.new_page()
+                    # Block unnecessary resources for speed
+                    await page.route(
+                        "**/*",
+                        lambda route: (
+                            route.abort()
+                            if route.request.resource_type in ["image", "stylesheet", "font", "media"]
+                            else route.continue_()
+                        ),
+                    )
+
+                    await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                    data = await self._extract_car_data_playwright(page)
+                    return data
+                except Exception as e:
+                    if attempt == 2:
+                        logger.error(f"Failed to scrape {url} after 3 attempts: {e}")
+                finally:
+                    if page:
+                        await page.close()
             return None
-    
-    def _parse_title(self, title:  str) -> Dict:
-        """Parse car title to extract marca, modelo, año"""
-        parts = title.strip().split()
-        
-        result = {
-            'marca': '',
-            'modelo': '',
-            'año': ''
+
+    async def _extract_car_data_playwright(self, page) -> Dict:
+        data = {
+            "fecha_extraccion": datetime.now().isoformat(),
+            "url_detalle": page.url,
+            "es_financiado": False,
+            "recibe_vehiculo": False,
         }
         
-        if not parts:
-            return result
-        
-        # First part is usually the brand
-        result['marca'] = parts[0]
-        
-        # Last part that's a 4-digit number is usually the year
-        for i in range(len(parts) - 1, -1, -1):
-            if parts[i].isdigit() and len(parts[i]) == 4:
-                result['año'] = parts[i]
-                # Everything between brand and year is the model
-                if i > 1:
-                    result['modelo'] = ' '.join(parts[1:i])
-                break
-        
-        # If no year found, assume everything after brand is model
-        if not result['año'] and len(parts) > 1:
-            result['modelo'] = ' '.join(parts[1:])
-        
-        return result
-    
-    def _parse_price(self, price_text: str) -> Optional[float]:
-        """Parse price text to numeric value"""
+        # Extract ID
         try:
-            # Remove non-numeric characters except dots and commas
-            cleaned = re.sub(r'[^\d.,]', '', price_text)
+            parsed = parse_qs(urlparse(page.url).query)
+            if "c" in parsed:
+                data["car_id"] = parsed["c"][0]
+            elif "id" in parsed:
+                data["car_id"] = parsed["id"][0]
+        except Exception:
+            pass
 
-            # Detectar formato europeo: puntos como miles, comas como decimal (ej. 10.000,50)
-            if ',' in cleaned and '.' in cleaned:
-                if cleaned.rfind(',') > cleaned.rfind('.'):
-                    # Es formato europeo: quitar puntos y cambiar coma por punto
-                    cleaned = cleaned.replace('.', '').replace(',', '.')
-                else:
-                    # Formato americano normal: quitar comas
-                    cleaned = cleaned.replace(',', '')
-            elif ',' in cleaned and '.' not in cleaned:
-                # Sólo tiene comas, si tiene tres o menos de distancia del final podría ser centavos, pero usualmente son miles
-                # Asumiremos miles y las quitamos
-                cleaned = cleaned.replace(',', '')
-
-            return float(cleaned) if cleaned else None
-        except: 
-            return None
-    
-    def _extract_attributes(self, options_table) -> Dict:
-        """Extract attributes from options table"""
-        attributes = {}
-        
+        # Parse title
         try:
-            rows = options_table.find_all('tr')
+            title_element = page.locator("div.header-text h1").first
+            full_title_text = (await title_element.inner_text()).strip()
+            data["titulo_completo"] = full_title_text
+
+            title_parts = full_title_text.split()
+            if title_parts and title_parts[-1].isdigit() and len(title_parts[-1]) == 4:
+                data["año"] = title_parts.pop()
+
+            remaining_title = " ".join(title_parts)
+            for marca in MARCAS:
+                if remaining_title.upper().startswith(marca):
+                    data["marca"] = marca
+                    data["modelo"] = remaining_title[len(marca):].strip()
+                    break
+            if "modelo" not in data:
+                data["modelo"] = remaining_title
+        except Exception:
+            pass
+
+        # Parse price
+        try:
+            price_crc_text = await page.locator("div.header-text h3").first.inner_text()
+            data["precio"] = price_crc_text
+            cleaned = re.sub(r'[^\d]', '', price_crc_text)
+            if cleaned:
+                data["precio_numerico"] = float(cleaned)
+        except Exception:
+            try:
+                # alternative price locator
+                price_usd_text = await page.locator("div.header-text h1").nth(1).inner_text()
+                data["precio"] = price_usd_text
+                cleaned = re.sub(r'[^\d.]', '', price_usd_text)
+                if cleaned:
+                    data["precio_numerico"] = float(cleaned)
+            except Exception:
+                pass
+
+        # Extract image
+        try:
+            data["url_imagen"] = await page.locator("div.bannerimg").get_attribute("data-image-src", timeout=2000)
+        except Exception:
+            pass
+
+        # Extract general info (from tables)
+        try:
+            for row in await page.locator("table.mytext2 tbody tr").all():
+                cells = await row.locator("td").all()
+                if len(cells) == 2:
+                    key = (await cells[0].inner_text()).strip().lower()
+                    value = (await cells[1].inner_text()).strip()
+
+                    if "transmisión" in key or "transmision" in key:
+                        data["transmision"] = value
+                    elif "combustible" in key:
+                        data["combustible"] = value
+                    elif "kilometraje" in key:
+                        data["kilometraje"] = value
+                        km_val = re.sub(r'[^\d]', '', value)
+                        if km_val:
+                            data["kilometraje_numerico"] = int(km_val)
+                    elif "estilo" in key:
+                        data["estilo"] = value
+                    elif "provincia" in key:
+                        data["provincia"] = value
+        except Exception:
+            pass
             
-            for row in rows:
-                text = row.get_text(strip=True)
-                
-                if 'Transmisión' in text or 'Transmision' in text:
-                    value = text.split(': ')[-1].strip()
-                    attributes['transmision'] = value
-                
-                elif 'Combustible' in text: 
-                    value = text.split(':')[-1].strip()
-                    attributes['combustible'] = value
-                
-                elif 'Kilometraje' in text:
-                    value = text.split(':')[-1].strip()
-                    attributes['kilometraje'] = value
-                    attributes['kilometraje_numerico'] = self._parse_kilometraje(value)
-                
-                elif 'Estilo' in text:
-                    value = text.split(':')[-1].strip()
-                    attributes['estilo'] = value
-                
-                elif 'Puertas' in text:
-                    value = text.split(':')[-1].strip()
-                    attributes['puertas'] = self._parse_doors(value)
-                
-                elif 'Provincia' in text:
-                    value = text.split(':')[-1].strip()
-                    attributes['provincia'] = value
-                
-                elif 'Cilindrada' in text:
-                    value = text.split(':')[-1].strip()
-                    # You can add cilindrada field if needed
-                
-                elif 'Financiado' in text:
-                    attributes['es_financiado'] = 'Sí' in text or 'Si' in text
-                
-                elif 'Recibe' in text:
-                    attributes['recibe_vehiculo'] = 'Sí' in text or 'Si' in text
-        
-        except Exception as e: 
-            logger.error(f"Error extracting attributes: {e}")
-        
-        return attributes
-    
-    def _parse_kilometraje(self, km_text: str) -> Optional[int]:
-        """Parse kilometraje to numeric value"""
-        try: 
-            cleaned = re.sub(r'[^\d]', '', km_text)
-            return int(cleaned) if cleaned else None
-        except:
-            return None
-    
-    def _parse_doors(self, doors_text: str) -> Optional[int]:
-        """Parse doors to numeric value"""
-        try: 
-            match = re.search(r'\d+', doors_text)
-            return int(match.group()) if match else None
-        except:
-            return None
+        # Optional: Vendor info
+        try:
+            seller_table = page.locator('//table[.//td[contains(., "Vendedor")]]')
+            if await seller_table.count() > 0:
+                for row in await seller_table.locator("tr").all():
+                    cells = await row.locator("td").all()
+                    if len(cells) == 2:
+                        key = (await cells[0].inner_text()).strip().lower().replace(":", "")
+                        value = (await cells[1].inner_text()).strip()
+                        if "vendedor" in key or "nombre" in key:
+                            data["vendedor"] = value
+        except Exception:
+            pass
+
+        # Optional: Financing
+        try:
+            fin_text = await page.content()
+            if "Financiado" in fin_text:
+                data["es_financiado"] = True
+            if "Recibe" in fin_text:
+                data["recibe_vehiculo"] = True
+        except Exception:
+            pass
+
+        return data

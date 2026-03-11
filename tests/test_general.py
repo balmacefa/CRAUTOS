@@ -6,27 +6,6 @@ from sqlalchemy.orm import sessionmaker
 import sys
 import os
 
-from sqlalchemy.dialects import sqlite
-import sqlalchemy.types as types
-
-# We have to patch UUID before models load
-class StringUUID(types.TypeDecorator):
-    impl = types.String
-    cache_ok = True
-
-    def __init__(self, as_uuid=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "sqlite":
-            return dialect.type_descriptor(types.String(36))
-        else:
-            from sqlalchemy.dialects.postgresql import UUID
-            return dialect.type_descriptor(UUID(as_uuid=True))
-
-import sqlalchemy.dialects.postgresql
-# Monkey patch PostgreSQL UUID with ours so when models import it they get the hybrid one
-sqlalchemy.dialects.postgresql.UUID = StringUUID
 
 from backend.api.main import app
 from backend.database.connection import Base, get_db
@@ -39,11 +18,8 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Necesitamos conectarnos explícitamente y crear todo
 with engine.begin() as conn:
     ModelBase.metadata.create_all(conn)
-
-
 def override_get_db():
     try:
         db = TestingSessionLocal()
